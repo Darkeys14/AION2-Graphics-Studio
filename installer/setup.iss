@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.5.0"
+  #define AppVersion "0.5.1"
 #endif
 #define AppName "AION 2 Graphics Studio"
 
@@ -8,6 +8,7 @@ AppId={{8D9B3F4A-60E2-49B0-B8DA-720F0FF6A5C1}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=Darkeys14
+AppCopyright=Copyright © 2026 Darkeys14. All rights reserved.
 AppPublisherURL=https://github.com/Darkeys14/AION2-Graphics-Studio
 AppSupportURL=https://github.com/Darkeys14/AION2-Graphics-Studio/issues
 AppUpdatesURL=https://github.com/Darkeys14/AION2-Graphics-Studio/releases
