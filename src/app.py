@@ -15,6 +15,7 @@ from features_ui import Features
 from updates_ui import Updates
 from version import VERSION
 from pvp_ui import Pvp
+from live_ui import LiveWatch
 
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('blue')
@@ -29,7 +30,7 @@ def label(parent, text, size=14, color=TEXT, bold=False, **kw):
                          weight='bold' if bold else 'normal'), text_color=color, **kw)
 
 
-class Studio(Pvp, Updates, Features, ctk.CTk):
+class Studio(LiveWatch, Pvp, Updates, Features, ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title('AION 2 Graphics Studio')
@@ -57,6 +58,7 @@ class Studio(Pvp, Updates, Features, ctk.CTk):
             self.prefs = {}
         self.features_init(ROOT)
         self.pvp_init()
+        self.live_init()
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color=PANEL)
@@ -68,7 +70,7 @@ class Studio(Pvp, Updates, Features, ctk.CTk):
         navigation = ctk.CTkScrollableFrame(self.sidebar, fg_color='transparent', corner_radius=0)
         navigation.pack(fill='both', expand=True, padx=5, pady=(0, 10))
         for title in ['Профили', 'Ручные настройки', 'Оптимизация', 'PvP · расширенный', 'Профили из игры',
-                      'Проверка настроек', 'Нагрузка ПК', 'Резервные копии', 'Файл настроек DAT', 'Обнаружение игры', 'Обновления']:
+                      'Во время игры', 'Проверка настроек', 'Нагрузка ПК', 'Резервные копии', 'Файл настроек DAT', 'Обнаружение игры', 'Обновления']:
             button = ctk.CTkButton(navigation, text=title, anchor='w', height=40, corner_radius=10,
                                   fg_color='transparent', hover_color=CARD,
                                   font=('Segoe UI', 14), command=lambda t=title: self.show(t))
@@ -197,6 +199,7 @@ class Studio(Pvp, Updates, Features, ctk.CTk):
             'Файл настроек DAT': 'Анализ локального файла без изменения его содержимого.',
             'Обновления': 'Стабильные версии из официального репозитория приложения.',
             'PvP · расширенный': 'Приоритет производительности в сценах с большим числом игроков.',
+            'Во время игры': 'Только наблюдение за файлами настроек; без записи и управления процессом.',
             'Резервные копии': 'Каждая запись начинается с проверенной копии исходного файла.',
             'Обнаружение игры': 'Локальная конфигурация, состояние игры и границы поддержки.',
         }[page])
@@ -206,6 +209,7 @@ class Studio(Pvp, Updates, Features, ctk.CTk):
          'Нагрузка ПК': self.monitor_page, 'Файл настроек DAT': self.device_page,
          'Обновления': self.updates_page,
          'PvP · расширенный': self.pvp_page,
+         'Во время игры': self.live_page,
          'Резервные копии': self.history, 'Обнаружение игры': self.diagnostics}[page]()
 
     def panel(self):

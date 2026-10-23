@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory() as tmp:
             window.show(page)
             window.update()
             assert window.body.winfo_children(), page
-        assert len(window.nav) == 11
+        assert len(window.nav) == 12
         window.show('Профили из игры')
         window.capture_name.insert(0, 'Проверка профиля')
         window.capture_now()
@@ -61,5 +61,8 @@ with tempfile.TemporaryDirectory() as tmp:
         assert config.read_bytes() == fixture()
         assert (config.parent / 'Engine.ini').read_bytes() == SOURCE
         assert dat.read_bytes() == b'\xe1\x52\x81\x6e' * 40
+        window.show('Во время игры')
+        window.update()
+        assert window.live_button.cget('text') == 'Начать наблюдение'
+        print('UI OK: 12 pages, captures, live config monitor, 5 preview dialogs, telemetry chart; source files unchanged')
         window.destroy()
-        print('UI OK: 11 pages, captures, 5 preview dialogs, telemetry chart; source files unchanged')

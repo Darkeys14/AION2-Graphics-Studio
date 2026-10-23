@@ -6,7 +6,7 @@
 ISCC.exe installer/setup.iss
 ```
 
-Результат: `release/AION2-Graphics-Studio-0.4.0-Setup.exe`. GitHub Actions передаёт номер версии из `src/version.py` через `/DAppVersion=...`.
+Результат: `release/AION2-Graphics-Studio-0.5.0-Setup.exe`. GitHub Actions передаёт номер версии из `src/version.py` через `/DAppVersion=...`.
 
 `test-install.ps1` предназначен для изолированного Windows runner: проверяет установку в RUNNER_TEMP, совпадение хеша исполняемого файла, запуск приложения, удаление и сохранность пользовательских данных. На личном компьютере этот тест автоматически запускать не нужно.
 
