@@ -6,7 +6,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/release.yml'
-      - 'installer/**'
+      - 'installer/setup.iss'
 
 permissions:
   contents: write
@@ -51,5 +51,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          gh release view v0.2.0 --json tagName *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Output 'Release v0.2.0 already exists; keeping its original assets.'
+            exit 0
+          }
           gh release create v0.2.0 release/AION2-Graphics-Studio-0.2.0-Setup.exe release/AION2-Graphics-Studio-0.2.0-Portable.zip release/SHA256SUMS.txt --target $env:GITHUB_SHA --title 'AION 2 Graphics Studio 0.2.0 — установщик Windows' --notes-file installer/release-notes.md --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
