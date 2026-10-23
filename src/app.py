@@ -11,6 +11,9 @@ import customtkinter as ctk
 from core import Document, Store, FIELDS, PRESETS, discover, ensure_closed, atomic_write
 from engine import EngineDocument, recommend
 from hardware import scan
+from features_ui import Features
+from updates_ui import Updates
+from version import VERSION
 
 ctk.set_appearance_mode('dark')
 ctk.set_default_color_theme('blue')
@@ -25,7 +28,7 @@ def label(parent, text, size=14, color=TEXT, bold=False, **kw):
                          weight='bold' if bold else 'normal'), text_color=color, **kw)
 
 
-class Studio(ctk.CTk):
+class Studio(Updates, Features, ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title('AION 2 Graphics Studio')
@@ -51,22 +54,26 @@ class Studio(ctk.CTk):
             self.prefs = json.loads(self.config_file.read_text('utf-8'))
         except (OSError, ValueError):
             self.prefs = {}
+        self.features_init(ROOT)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
         self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color=PANEL)
         self.sidebar.grid(row=0, column=0, sticky='nsew')
         self.sidebar.grid_propagate(False)
-        label(self.sidebar, 'AION 2', 32, bold=True).pack(anchor='w', padx=25, pady=(34, 0))
-        label(self.sidebar, 'ГРАФИЧЕСКАЯ СТУДИЯ', 11, MUTED).pack(anchor='w', padx=27, pady=(0, 35))
+        label(self.sidebar, 'AION 2', 32, bold=True).pack(anchor='w', padx=25, pady=(22, 0))
+        label(self.sidebar, 'ГРАФИЧЕСКАЯ СТУДИЯ · ' + VERSION, 10, MUTED).pack(anchor='w', padx=27, pady=(0, 16))
         self.nav = {}
-        for title in ['Профили', 'Ручные настройки', 'Оптимизация', 'Резервные копии', 'Обнаружение игры']:
-            button = ctk.CTkButton(self.sidebar, text=title, anchor='w', height=44, corner_radius=10,
+        navigation = ctk.CTkScrollableFrame(self.sidebar, fg_color='transparent', corner_radius=0)
+        navigation.pack(fill='both', expand=True, padx=5, pady=(0, 10))
+        for title in ['Профили', 'Ручные настройки', 'Оптимизация', 'Профили из игры',
+                      'Проверка настроек', 'Нагрузка ПК', 'Резервные копии', 'Файл настроек DAT', 'Обнаружение игры', 'Обновления']:
+            button = ctk.CTkButton(navigation, text=title, anchor='w', height=40, corner_radius=10,
                                   fg_color='transparent', hover_color=CARD,
                                   font=('Segoe UI', 14), command=lambda t=title: self.show(t))
-            button.pack(fill='x', padx=15, pady=4)
+            button.pack(fill='x', padx=4, pady=3)
             self.nav[title] = button
         hardware = ctk.CTkFrame(self.sidebar, fg_color=CARD, corner_radius=12)
-        hardware.pack(side='bottom', fill='x', padx=16, pady=24)
+        hardware.pack(side='bottom', fill='x', padx=16, pady=(0, 16))
         label(hardware, 'ВАШ КОМПЬЮТЕР', 10, MUTED).pack(anchor='w', padx=14, pady=(15, 6))
         self.hardware_label = label(hardware, 'Определяем оборудование…', 12, MUTED,
                                     wraplength=160, justify='left')
@@ -83,12 +90,16 @@ class Studio(ctk.CTk):
         self.body.grid(row=2, column=0, sticky='nsew')
         footer = ctk.CTkFrame(main, fg_color=PANEL, corner_radius=12)
         footer.grid(row=3, column=0, sticky='ew', pady=(18, 0))
-        self.status = label(footer, 'Проверка конфигурации…', 12, MUTED, wraplength=450, justify='left')
+        self.status = label(footer, 'Проверка конфигурации…', 12, MUTED, wraplength=320, justify='left')
         self.status.pack(side='left', padx=18, pady=15)
         ctk.CTkButton(footer, text='Просмотр изменений', width=185, height=40,
                       fg_color=ACCENT, hover_color='#4b60da', command=self.preview).pack(side='right', padx=14, pady=14)
+        ctk.CTkButton(footer, text='После выхода', width=120, height=40, fg_color='#26334c',
+                      command=lambda: self.preview(deferred=True)).pack(side='right', padx=4, pady=14)
+        self.updates_init(ROOT)
         self.detect(initial=True)
         self.scan_hardware()
+        self.begin_services()
 
     def scan_hardware(self):
         if self.scanning:
@@ -150,11 +161,15 @@ class Studio(ctk.CTk):
 
     def load(self):
         try:
+            cancelled = bool(self.deferred.job and self.deferred.job['path'].parent != self.path.resolve().parent)
+            if cancelled:
+                self.deferred.cancel()
             raw = self.path.read_bytes()
             doc = Document(raw)
             self.raw = raw
             self.disk_values = doc.values
-            self.notify('Конфигурация обнаружена · 13 параметров проверены')
+            self.notify('Конфигурация изменена: отложенная запись отменена.' if cancelled else
+                        'Конфигурация обнаружена · 13 параметров проверены', cancelled)
             self.prefs['path'] = str(self.path)
             self.persist()
         except Exception as exc:
@@ -174,11 +189,19 @@ class Studio(ctk.CTk):
             'Профили': 'Выберите характер игры. Детали остаются под вашим контролем.',
             'Ручные настройки': 'Только параметры, найденные в реальной конфигурации AION 2.',
             'Оптимизация': 'Подберите параметры — приложение само подготовит и запишет Engine.ini.',
+            'Профили из игры': 'Сохранённые настройки из вашего клиента AION 2.',
+            'Проверка настроек': 'Сравнение файлов и управление отложенной записью.',
+            'Нагрузка ПК': 'Наблюдение через системные счётчики Windows.',
+            'Файл настроек DAT': 'Анализ локального файла без изменения его содержимого.',
+            'Обновления': 'Стабильные версии из официального репозитория приложения.',
             'Резервные копии': 'Каждая запись начинается с проверенной копии исходного файла.',
             'Обнаружение игры': 'Локальная конфигурация, состояние игры и границы поддержки.',
         }[page])
         {'Профили': self.profiles, 'Ручные настройки': self.manual,
          'Оптимизация': self.optimization,
+         'Профили из игры': self.captures_page, 'Проверка настроек': self.verification_page,
+         'Нагрузка ПК': self.monitor_page, 'Файл настроек DAT': self.device_page,
+         'Обновления': self.updates_page,
          'Резервные копии': self.history, 'Обнаружение игры': self.diagnostics}[page]()
 
     def panel(self):
@@ -278,11 +301,12 @@ class Studio(ctk.CTk):
         self.selected = 'Мой профиль'
         self.show('Ручные настройки')
 
-    def preview(self):
+    def preview(self, deferred=False):
         try:
             if not self.path or self.raw is None:
                 raise ValueError('Сначала выберите поддерживаемый GameUserSettings.ini в разделе обнаружения.')
-            ensure_closed()
+            if not deferred:
+                ensure_closed()
             if self.path.read_bytes() != self.raw:
                 self.load()
                 raise ValueError('Файл изменился. Данные обновлены; откройте просмотр повторно.')
@@ -297,19 +321,21 @@ class Studio(ctk.CTk):
             win.minsize(600, 540)
             win.configure(fg_color=BG)
             win.transient(self)
-            label(win, 'Готово к применению', 24, bold=True).pack(anchor='w', padx=25, pady=(25, 7))
+            label(win, 'Применить после выхода' if deferred else 'Готово к применению', 24, bold=True).pack(anchor='w', padx=25, pady=(25, 7))
             label(win, 'Профиль: ' + self.selected + ' · ' + str(len(changes)) + ' изменений', 13, MUTED).pack(anchor='w', padx=25)
             scroll = ctk.CTkScrollableFrame(win, fg_color=PANEL)
             scroll.pack(fill='both', expand=True, padx=25, pady=20)
             for key, old, new in changes:
                 a = LEVELS[old] if old < 4 else 'Особое (4)'
                 label(scroll, f'{FIELDS[key]}: {a} → {LEVELS[new]}', 13, anchor='w').pack(fill='x', padx=12, pady=9)
-            label(win, 'Будет создана резервная копия с проверкой целостности.\nПосле записи запустите игру и проверьте результат.',
+            label(win, 'После закрытия игры будут изменены только выбранные группы качества.\nСтудия должна оставаться открытой. Копия создаётся перед записью.' if deferred else
+                       'Будет создана резервная копия с проверкой целостности.\nПосле записи запустите игру и проверьте результат.',
                   12, MUTED, justify='left').pack(anchor='w', padx=25, pady=(0, 12))
             expected, values, path, title = self.raw, self.values.copy(), self.path, self.selected
-            ctk.CTkButton(win, text='Создать копию и применить', height=42, fg_color=ACCENT,
-                          command=lambda: self.apply(win, path, expected, values, title)).pack(fill='x', padx=25, pady=(0, 22))
-            win.after(150, win.grab_set)
+            action = self.queue_quality if deferred else self.apply
+            ctk.CTkButton(win, text='Отложить до закрытия игры' if deferred else 'Создать копию и применить', height=42, fg_color=ACCENT,
+                          command=lambda: action(win, path, expected, values, title)).pack(fill='x', padx=25, pady=(0, 22))
+            self.after(150, lambda: win.grab_set() if win.winfo_exists() else None)
         except Exception as exc:
             self.notify(str(exc), True)
 
@@ -447,6 +473,8 @@ class Studio(ctk.CTk):
               12, MUTED, justify='left').pack(anchor='w', padx=20, pady=(0, 18))
         ctk.CTkButton(self.body, text='Сформировать и применить Engine.ini', height=44, fg_color=ACCENT,
                       command=self.engine_preview).pack(fill='x', padx=4, pady=12)
+        ctk.CTkButton(self.body, text='Отложить Engine.ini до закрытия игры', height=38, fg_color='#26334c',
+                      command=lambda: self.engine_preview(deferred=True)).pack(fill='x', padx=4, pady=(0, 12))
         ctk.CTkButton(self.body, text='Удалить только блок оптимизации студии', height=38, fg_color='#26334c',
                       command=lambda: self.engine_preview(remove=True)).pack(fill='x', padx=4, pady=(0, 15))
 
@@ -458,11 +486,12 @@ class Studio(ctk.CTk):
         menu.set(self.opt.get(key, choices[0]))
         menu.pack(side='right', padx=16, pady=10)
 
-    def engine_preview(self, remove=False):
+    def engine_preview(self, remove=False, deferred=False):
         try:
             if not self.path or self.raw is None:
                 raise ValueError('Сначала выберите проверенную конфигурацию игры.')
-            ensure_closed()
+            if not deferred:
+                ensure_closed()
             path = self.path.parent / 'Engine.ini'
             expected = path.read_bytes()
             document = EngineDocument(expected)
@@ -484,11 +513,13 @@ class Studio(ctk.CTk):
             text.insert('1.0', 'Будет удалён только блок AION2 GRAPHICS STUDIO.\nОстальной файл будет сохранён.' if remove else
                         '[SystemSettings]\n' + '\n'.join(f'{k}={v}' for k, v in values.items()))
             text.configure(state='disabled')
-            label(win, 'Исходный файл будет сохранён и проверен.\nРезультат в игре требует проверки после запуска.',
+            label(win, 'Запись после закрытия игры и паузы на сохранение.\nОставьте студию открытой; исходный файл будет сохранён перед записью.' if deferred else
+                       'Исходный файл будет сохранён и проверен.\nРезультат в игре требует проверки после запуска.',
                   12, MUTED, justify='left').pack(anchor='w', padx=25, pady=(0, 15))
-            ctk.CTkButton(win, text='Создать копию и применить', height=42, fg_color=ACCENT,
-                          command=lambda: self.engine_apply(win, path, expected, values, remove)).pack(fill='x', padx=25, pady=(0, 23))
-            win.after(150, win.grab_set)
+            action = self.queue_engine if deferred else self.engine_apply
+            ctk.CTkButton(win, text='Отложить до закрытия игры' if deferred else 'Создать копию и применить', height=42, fg_color=ACCENT,
+                          command=lambda: action(win, path, expected, values, remove)).pack(fill='x', padx=25, pady=(0, 23))
+            self.after(150, lambda: win.grab_set() if win.winfo_exists() else None)
         except Exception as exc:
             self.notify(str(exc), True)
 

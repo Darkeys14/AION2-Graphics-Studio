@@ -1,4 +1,6 @@
-#define AppVersion "0.2.0"
+#ifndef AppVersion
+  #define AppVersion "0.3.0"
+#endif
 #define AppName "AION 2 Graphics Studio"
 
 [Setup]

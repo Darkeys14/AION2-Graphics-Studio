@@ -13,6 +13,8 @@ release/
 .env
 .env.*
 backups/
+captured/
+updates/
 studio.json
 *.ini
 *.dat

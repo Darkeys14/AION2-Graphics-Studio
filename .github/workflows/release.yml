@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/release.yml'
       - 'installer/setup.iss'
+      - 'src/version.py'
 
 permissions:
   contents: write
@@ -29,19 +30,24 @@ jobs:
           python-version: '3.11'
           architecture: x64
           cache: pip
+      - name: Read release version
+        run: |
+          $studioVersion = python -c "from src.version import VERSION; print(VERSION)"
+          if ($studioVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
+          "RELEASE_VERSION=$studioVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Test and build application
         run: ./build.ps1
       - name: Compile Russian Windows installer
         run: |
           $studioCompiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
           if (-not (Test-Path -LiteralPath $studioCompiler)) { throw 'Preinstalled Inno Setup compiler not found' }
-          & $studioCompiler installer/setup.iss
+          & $studioCompiler "/DAppVersion=$env:RELEASE_VERSION" installer/setup.iss
           if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
       - name: Test installation, launch and uninstall
         run: ./installer/test-install.ps1
       - name: Package portable application and checksums
         run: |
-          Compress-Archive -Path dist/AION2GraphicsStudio -DestinationPath release/AION2-Graphics-Studio-0.2.0-Portable.zip
+          Compress-Archive -Path dist/AION2GraphicsStudio -DestinationPath "release/AION2-Graphics-Studio-$env:RELEASE_VERSION-Portable.zip"
           $studioLines = Get-ChildItem release -File | Sort-Object Name | ForEach-Object {
             '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
           }
@@ -51,10 +57,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release view v0.2.0 --json tagName *> $null
+          $studioTag = "v$env:RELEASE_VERSION"
+          gh release view $studioTag --json tagName *> $null
           if ($LASTEXITCODE -eq 0) {
-            Write-Output 'Release v0.2.0 already exists; keeping its original assets.'
+            Write-Output "Release $studioTag already exists; keeping its original assets."
             exit 0
           }
-          gh release create v0.2.0 release/AION2-Graphics-Studio-0.2.0-Setup.exe release/AION2-Graphics-Studio-0.2.0-Portable.zip release/SHA256SUMS.txt --target $env:GITHUB_SHA --title 'AION 2 Graphics Studio 0.2.0 — установщик Windows' --notes-file installer/release-notes.md --latest
+          gh release create $studioTag "release/AION2-Graphics-Studio-$env:RELEASE_VERSION-Setup.exe" "release/AION2-Graphics-Studio-$env:RELEASE_VERSION-Portable.zip" release/SHA256SUMS.txt --target $env:GITHUB_SHA --title "AION 2 Graphics Studio $env:RELEASE_VERSION" --notes-file installer/release-notes.md --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

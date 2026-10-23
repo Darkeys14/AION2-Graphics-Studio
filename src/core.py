@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import tempfile
 import uuid
+import time
 from datetime import datetime, timezone
 
 FIELDS = {
@@ -89,8 +90,12 @@ def processes() -> list[str]:
         kernel.CloseHandle(handle)
 
 
+def game_running():
+    return any(re.match(r'^aion(?:2)?(?:[-_.].*)?\.exe$', name, re.I) for name in processes())
+
+
 def ensure_closed():
-    if any(re.match(r'^aion(?:2)?(?:[-_.].*)?\.exe$', name, re.I) for name in processes()):
+    if game_running():
         raise SafetyError('Закройте AION 2 перед изменением или откатом настроек.')
 
 
@@ -158,13 +163,14 @@ class Store:
                     result.append(item)
             except (ValueError, OSError):
                 continue
-        return result
+        return sorted(result, key=lambda item: item.get('created_ns', 0), reverse=True)
 
     def snapshot(self, path: Path, before: bytes, after: bytes, label: str):
         identity = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:10]
         item = {'id': identity, 'path': str(path.resolve()), 'before': digest(before),
                 'after': digest(after), 'label': label,
-                'time': datetime.now().astimezone().isoformat(timespec='seconds')}
+                'time': datetime.now().astimezone().isoformat(timespec='seconds'),
+                'created_ns': time.time_ns(), 'status': 'snapshot'}
         atomic_write(self.backups / (identity + '.bin'), before)
         if digest((self.backups / (identity + '.bin')).read_bytes()) != item['before']:
             raise SafetyError('Проверка резервной копии не пройдена.')
@@ -204,7 +210,25 @@ class Store:
         atomic_write(path, after)
         if path.read_bytes() != after:
             raise SafetyError('Проверка записи не пройдена. Резервная копия сохранена.')
+        self._receipt(item, path, after)
         return item
+
+    def _receipt(self, item, path, data):
+        if path.name.lower() == 'gameusersettings.ini':
+            expected = Document(data).values
+            kind = 'quality'
+        else:
+            from engine import EngineDocument
+            document = EngineDocument(data)
+            expected = dict(line.split('=', 1) for line in document.managed.splitlines()
+                            if '=' in line and not line.startswith(';'))
+            kind = 'engine'
+        item.update(status='applied', expected=expected, kind=kind, applied_ns=time.time_ns())
+        try:
+            atomic_write(self.backups / (item['id'] + '.json'),
+                         json.dumps(item, ensure_ascii=False, indent=2).encode('utf-8'))
+        except OSError as exc:
+            raise SafetyError('Файл записан, но журнал проверки не сохранён. Резервная копия осталась на диске.') from exc
 
     def restore(self, identity: str, selected: Path):
         ensure_closed()
@@ -220,10 +244,11 @@ class Store:
         current = path.read_bytes()
         if digest(current) != item['after']:
             raise SafetyError('После этой копии файл изменялся. Полный откат мог бы стереть новые настройки; операция заблокирована.')
-        self.snapshot(path, current, data, 'Перед откатом')
+        receipt = self.snapshot(path, current, data, 'Перед откатом')
         ensure_closed()
         if path.read_bytes() != current:
             raise SafetyError('Файл изменился во время отката. Операция отменена.')
         atomic_write(path, data)
         if path.read_bytes() != data:
             raise SafetyError('Не удалось подтвердить восстановление.')
+        self._receipt(receipt, path, data)
