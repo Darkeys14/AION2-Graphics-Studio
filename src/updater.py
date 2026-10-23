@@ -131,7 +131,14 @@ $studioState=Join-Path $env:AION2_UPDATE_ROOT 'update-status.json'
 try {
   $studioParent=Get-Process -Id ([int]$env:AION2_UPDATE_PARENT) -ErrorAction SilentlyContinue
   if ($studioParent) { $studioParent.WaitForExit() }
-  $studioHash=(Get-FileHash -LiteralPath $env:AION2_UPDATE_INSTALLER -Algorithm SHA256).Hash.ToLowerInvariant()
+  $studioAlgorithm=[System.Security.Cryptography.SHA256]::Create()
+  $studioStream=[System.IO.File]::OpenRead($env:AION2_UPDATE_INSTALLER)
+  try {
+    $studioHash=([System.BitConverter]::ToString($studioAlgorithm.ComputeHash($studioStream))).Replace('-','').ToLowerInvariant()
+  } finally {
+    $studioStream.Dispose()
+    $studioAlgorithm.Dispose()
+  }
   if ($studioHash -ne $env:AION2_UPDATE_HASH) { throw 'Installer hash mismatch' }
   $studioArgs=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$env:AION2_UPDATE_FOLDER+'"'))
   $studioSetup=Start-Process -FilePath $env:AION2_UPDATE_INSTALLER -ArgumentList $studioArgs -WindowStyle Hidden -Wait -PassThru
@@ -143,6 +150,8 @@ try {
 }
 """
     environment = os.environ.copy()
+    # A parent PowerShell 7 session may export module paths incompatible with Windows PowerShell.
+    environment.pop('PSModulePath', None)
     environment.update(AION2_UPDATE_ROOT=str(Path(root).resolve()), AION2_UPDATE_PARENT=str(os.getpid()),
                        AION2_UPDATE_INSTALLER=str(installer), AION2_UPDATE_HASH=update['sha256'],
                        AION2_UPDATE_FOLDER=str(folder), AION2_UPDATE_VERSION=update['version'])

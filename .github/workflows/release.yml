@@ -7,7 +7,10 @@ on:
     paths:
       - '.github/workflows/release.yml'
       - 'installer/setup.iss'
-      - 'src/version.py'
+      - 'src/**'
+      - 'tests/**'
+      - 'build.ps1'
+      - 'requirements.txt'
 
 permissions:
   contents: write

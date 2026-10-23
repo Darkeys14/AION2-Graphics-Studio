@@ -88,6 +88,8 @@ class UpdaterTests(unittest.TestCase):
                 self.assertEqual(args[0][0], 'powershell.exe')
                 self.assertEqual(kwargs['env']['AION2_UPDATE_FOLDER'], str(folder))
                 self.assertNotIn(str(folder), args[0][-1])
+                self.assertNotIn('PSModulePath', kwargs['env'])
+                self.assertNotIn('Get-FileHash', args[0][-1])
                 target.write_bytes(b'tampered')
                 with self.assertRaises(SafetyError):
                     launch_installer_after_exit(root, update, folder)
