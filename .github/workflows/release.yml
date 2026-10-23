@@ -1,0 +1,55 @@
+name: Windows installer and release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release.yml'
+      - 'installer/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+          cache: pip
+      - name: Test and build application
+        run: ./build.ps1
+      - name: Compile Russian Windows installer
+        run: |
+          $studioCompiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $studioCompiler)) { throw 'Preinstalled Inno Setup compiler not found' }
+          & $studioCompiler installer/setup.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+      - name: Test installation, launch and uninstall
+        run: ./installer/test-install.ps1
+      - name: Package portable application and checksums
+        run: |
+          Compress-Archive -Path dist/AION2GraphicsStudio -DestinationPath release/AION2-Graphics-Studio-0.2.0-Portable.zip
+          $studioLines = Get-ChildItem release -File | Sort-Object Name | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
+          }
+          $studioLines | Set-Content release/SHA256SUMS.txt -Encoding ascii
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create v0.2.0 release/AION2-Graphics-Studio-0.2.0-Setup.exe release/AION2-Graphics-Studio-0.2.0-Portable.zip release/SHA256SUMS.txt --target $env:GITHUB_SHA --title 'AION 2 Graphics Studio 0.2.0 — установщик Windows' --notes-file installer/release-notes.md --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
