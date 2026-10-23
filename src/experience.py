@@ -104,6 +104,8 @@ def verify_record(item):
     expected = item['expected']
     if item['kind'] == 'quality':
         actual = Document(raw).values
+    elif item['kind'] == 'engine-merged':
+        actual = EngineDocument(raw).read_settings(expected)
     else:
         document = EngineDocument(raw)
         document.patch(expected)  # Reject conflicting overrides outside the managed block.
@@ -134,8 +136,8 @@ class Deferred:
         raw = stable_read(path)
         if kind == 'quality' and path.name == 'GameUserSettings.ini':
             Document(raw).patch(values)
-        elif kind == 'engine' and path.name.lower() == 'engine.ini':
-            EngineDocument(raw).patch(values)
+        elif kind in {'engine', 'engine-merged'} and path.name.lower() == 'engine.ini':
+            EngineDocument(raw).patch(values, merge=kind == 'engine-merged')
         else:
             raise SafetyError('Неподдерживаемая цель отложенной записи.')
         self.job = {'path': path, 'values': values.copy(), 'title': title, 'kind': kind}
@@ -171,9 +173,10 @@ class Deferred:
                     return 'Выбранные настройки уже сохранены в файле. Отложенная задача завершена.'
                 self.store.apply(job['path'], raw, job['values'], job['title'] + ' · после выхода')
             else:
-                if EngineDocument(raw).patch(job['values']) == raw:
+                merge = job['kind'] == 'engine-merged'
+                if EngineDocument(raw).patch(job['values'], merge=merge) == raw:
                     return 'Engine.ini уже соответствует отложенным настройкам.'
-                self.store.apply_engine(job['path'], raw, job['values'], job['title'] + ' · после выхода')
+                self.store.apply_engine(job['path'], raw, job['values'], job['title'] + ' · после выхода', merge=merge)
             return 'Отложенные настройки записаны после закрытия игры. Резервная копия проверена.'
         except Exception:
             self.cancel()

@@ -188,7 +188,7 @@ class Store:
         after = Document(before).patch(values)
         return self._commit(path, before, after, label)
 
-    def apply_engine(self, path: Path, expected: bytes, values: dict, label: str):
+    def apply_engine(self, path: Path, expected: bytes, values: dict, label: str, merge=False):
         from engine import EngineDocument
         ensure_closed()
         path = path.resolve(strict=True)
@@ -197,10 +197,11 @@ class Store:
         before = path.read_bytes()
         if before != expected:
             raise SafetyError('Engine.ini изменился после просмотра. Сформируйте изменения повторно.')
-        after = EngineDocument(before).patch(values)
-        return self._commit(path, before, after, label)
+        after = EngineDocument(before).patch(values, merge=merge)
+        receipt = {'kind': 'engine-merged', 'expected': values.copy()} if merge else None
+        return self._commit(path, before, after, label, receipt)
 
-    def _commit(self, path, before, after, label):
+    def _commit(self, path, before, after, label, receipt=None):
         if before == after:
             raise SafetyError('Изменений нет: выбранные значения уже записаны.')
         item = self.snapshot(path, before, after, label)
@@ -210,11 +211,13 @@ class Store:
         atomic_write(path, after)
         if path.read_bytes() != after:
             raise SafetyError('Проверка записи не пройдена. Резервная копия сохранена.')
-        self._receipt(item, path, after)
+        self._receipt(item, path, after, receipt)
         return item
 
-    def _receipt(self, item, path, data):
-        if path.name.lower() == 'gameusersettings.ini':
+    def _receipt(self, item, path, data, override=None):
+        if override:
+            expected, kind = override['expected'], override['kind']
+        elif path.name.lower() == 'gameusersettings.ini':
             expected = Document(data).values
             kind = 'quality'
         else:
@@ -251,4 +254,9 @@ class Store:
         atomic_write(path, data)
         if path.read_bytes() != data:
             raise SafetyError('Не удалось подтвердить восстановление.')
-        self._receipt(receipt, path, data)
+        override = None
+        if item.get('kind') == 'engine-merged':
+            from engine import EngineDocument
+            old = EngineDocument(data).read_settings(item['expected'])
+            override = {'kind': 'engine-merged', 'expected': {key: old.get(key) for key in item['expected']}}
+        self._receipt(receipt, path, data, override)

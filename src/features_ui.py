@@ -150,7 +150,8 @@ class Features:
             for row in item['rows']:
                 key = FIELDS.get(row['key'], row['key'])
                 value = row['actual'] if row['actual'] is not None else 'строка отсутствует'
-                text(box, f"{'✓' if row['same'] else '≠'} {key}: ожидалось {row['expected']} · сейчас {value}",
+                expected_value = row['expected'] if row['expected'] is not None else 'строка отсутствует'
+                text(box, f"{'✓' if row['same'] else '≠'} {key}: ожидалось {expected_value} · сейчас {value}",
                      12, '#93a4bf' if row['same'] else '#ffbc83', wraplength=700).pack(anchor='w', padx=20, pady=4)
             text(box, 'Последняя запись: ' + item['time'], 11).pack(anchor='w', padx=20, pady=(12, 17))
 

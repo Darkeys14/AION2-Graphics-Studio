@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory() as tmp:
     dat.write_bytes(b'\xe1\x52\x81\x6e' * 40)
     with patch.object(app, 'ROOT', folder / 'studio'), patch.object(app, 'discover', return_value=[config]), \
             patch.object(app, 'scan', return_value={'cpu': ['Тестовый CPU'], 'gpu': [], 'ram_gb': 0}), \
-            patch('app.ensure_closed'), patch('features_ui.game_running', return_value=True), \
+            patch('app.ensure_closed'), patch('pvp_ui.ensure_closed'), patch('features_ui.game_running', return_value=True), \
             patch('experience.ensure_closed'):
         window = app.Studio()
         errors = []
@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory() as tmp:
             window.show(page)
             window.update()
             assert window.body.winfo_children(), page
-        assert len(window.nav) == 10
+        assert len(window.nav) == 11
         window.show('Профили из игры')
         window.capture_name.insert(0, 'Проверка профиля')
         window.capture_now()
@@ -52,10 +52,14 @@ with tempfile.TemporaryDirectory() as tmp:
             'cpu_total': 30, 'cpu_game': 10, 'game_ram_bytes': 1024**3, 'free_ram_kb': 2*1024**2})
         window.render_monitor()
         window.update()
+        window.pvp_engine_preview()
+        window.update()
+        modal = [w for w in window.winfo_children() if isinstance(w, app.ctk.CTkToplevel)][0]
+        modal.destroy()
         assert '1.00' in window.monitor_widgets['game_ram'].cget('text')
         assert not errors, errors
         assert config.read_bytes() == fixture()
         assert (config.parent / 'Engine.ini').read_bytes() == SOURCE
         assert dat.read_bytes() == b'\xe1\x52\x81\x6e' * 40
         window.destroy()
-        print('UI OK: 10 pages, captures, 4 preview dialogs, telemetry chart; source files unchanged')
+        print('UI OK: 11 pages, captures, 5 preview dialogs, telemetry chart; source files unchanged')

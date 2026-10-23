@@ -41,7 +41,7 @@ class UpdaterTests(unittest.TestCase):
             else:
                 data['assets'][0]['size'] = 151 * 1024 * 1024
             with self.assertRaises(SafetyError):
-                validate_release(data)
+                validate_release(data, '0.3.0')
 
     def test_checksum_must_match_exact_filename_once(self):
         data, checksum = release()
