@@ -10,6 +10,6 @@ ISCC.exe installer/setup.iss
 
 `test-install.ps1` предназначен для изолированного Windows runner: проверяет установку в RUNNER_TEMP, совпадение хеша исполняемого файла, запуск приложения, удаление и сохранность пользовательских данных. На личном компьютере этот тест автоматически запускать не нужно.
 
-Workflow Windows installer and release выполняет сборку, проверки и публикацию в GitHub Releases. Его также можно запустить вручную через Actions → Windows installer and release → Run workflow. При уже существующем релизе повторная публикация этого же тега остановится с ошибкой, не заменяя существующие файлы.
+Workflow Windows installer and release выполняет сборку, проверки и публикацию в GitHub Releases. Его также можно запустить вручную через Actions → Windows installer and release → Run workflow. При уже существующем релизе повторная публикация этого же тега будет пропущена, сохраняя существующие файлы.
 
 Удаление через Windows не затрагивает `%LOCALAPPDATA%/AION2GraphicsStudio` и файлы игры.
