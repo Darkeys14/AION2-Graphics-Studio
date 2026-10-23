@@ -13,7 +13,10 @@ from core import SafetyError, atomic_write
 from version import VERSION
 
 REPO = 'Darkeys14/AION2-Graphics-Studio'
-LATEST = f'https://api.github.com/repos/{REPO}/releases/latest'
+# GitHub's public API has a small unauthenticated quota shared by users behind
+# the same address. The canonical latest-release page redirects to its stable tag
+# and does not consume that API quota.
+LATEST = f'https://github.com/{REPO}/releases/latest'
 HEADERS = {'Accept': 'application/vnd.github+json', 'User-Agent': 'AION2GraphicsStudio/' + VERSION}
 
 
@@ -48,14 +51,27 @@ def validate_release(release, current=VERSION):
     return {'version': tag[1:], 'setup': setup, 'checksums': checksums}
 
 
-def open_url(url):
-    response = urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=15)
+def open_url(url, method='GET'):
+    response = urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS, method=method), timeout=15)
     final = urlparse(response.geturl())
     if final.scheme != 'https' or final.hostname not in {
         'github.com', 'api.github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'}:
         response.close()
         raise SafetyError('Неожиданный адрес загрузки обновления.')
     return response
+
+
+def latest_tag():
+    with open_url(LATEST) as response:
+        final = urlparse(response.geturl())
+    prefix = f'/{REPO}/releases/tag/'
+    if final.scheme != 'https' or final.hostname != 'github.com' or not final.path.startswith(prefix):
+        raise SafetyError('Не удалось определить стабильный релиз GitHub.')
+    tag = final.path[len(prefix):]
+    if '/' in tag or not tag.startswith('v'):
+        raise SafetyError('Страница последнего релиза вернула неверный тег.')
+    version_tuple(tag)
+    return tag
 
 
 def expected_hash(data, name):
@@ -70,43 +86,48 @@ def expected_hash(data, name):
 
 
 def check_and_download(root, current=VERSION):
-    with open_url(LATEST) as response:
-        raw = response.read(256 * 1024 + 1)
-    if len(raw) > 256 * 1024:
-        raise SafetyError('Слишком большой ответ GitHub.')
-    info = validate_release(json.loads(raw), current)
-    if info is None:
+    tag = latest_tag()
+    if version_tuple(tag) <= version_tuple(current):
         return None
-    with open_url(info['checksums']['browser_download_url']) as response:
+    name = f'AION2-Graphics-Studio-{tag[1:]}-Setup.exe'
+    base = f'https://github.com/{REPO}/releases/download/{tag}/'
+    setup_url = base + name
+    with open_url(base + 'SHA256SUMS.txt') as response:
         sums = response.read(32 * 1024 + 1)
     if len(sums) > 32 * 1024:
         raise SafetyError('Файл контрольных сумм превышает допустимый размер.')
-    wanted = expected_hash(sums, info['setup']['name'])
-    folder = Path(root) / 'updates' / info['version']
+    wanted = expected_hash(sums, name)
+    folder = Path(root) / 'updates' / tag[1:]
     folder.mkdir(parents=True, exist_ok=True)
-    target = folder / info['setup']['name']
-    temporary = folder / (info['setup']['name'] + '.part')
+    target = folder / name
+    temporary = folder / (name + '.part')
     started, total, sha = time.monotonic(), 0, hashlib.sha256()
     try:
-        with open_url(info['setup']['browser_download_url']) as response, temporary.open('wb') as stream:
+        with open_url(setup_url) as response, temporary.open('wb') as stream:
+            try:
+                expected_size = int(response.headers.get('Content-Length', '0'))
+            except (TypeError, ValueError) as exc:
+                raise SafetyError('Размер установщика не прошёл проверку.') from exc
+            if not 0 < expected_size <= 150 * 1024 * 1024:
+                raise SafetyError('Размер установщика не прошёл проверку.')
             while True:
                 chunk = response.read(256 * 1024)
                 if not chunk:
                     break
                 total += len(chunk)
-                if total > info['setup']['size'] or time.monotonic() - started > 180:
+                if total > expected_size or time.monotonic() - started > 180:
                     raise SafetyError('Загрузка обновления превысила ограничения.')
                 sha.update(chunk)
                 stream.write(chunk)
             stream.flush()
             os.fsync(stream.fileno())
-        if total != info['setup']['size'] or sha.hexdigest() != wanted:
+        if total != expected_size or sha.hexdigest() != wanted:
             raise SafetyError('Контрольная сумма или размер обновления не совпадает. Запуск запрещён.')
         os.replace(temporary, target)
     finally:
         if temporary.exists():
             temporary.unlink()
-    return {'version': info['version'], 'path': str(target), 'sha256': wanted}
+    return {'version': tag[1:], 'path': str(target), 'sha256': wanted}
 
 
 def installed_folder():

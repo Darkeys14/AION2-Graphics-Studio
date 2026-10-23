@@ -9,6 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from core import SafetyError
 from updater import REPO, validate_release, version_tuple, expected_hash, check_and_download, installed_folder, launch_installer_after_exit
+from updater import latest_tag, LATEST
 
 
 def release(payload=b'test installer'):
@@ -20,7 +21,32 @@ def release(payload=b'test installer'):
         {'name': 'SHA256SUMS.txt', 'size': len(checksum), 'browser_download_url': prefix + 'SHA256SUMS.txt'}]}, checksum
 
 
+class Response(io.BytesIO):
+    def __init__(self, data, url='https://github.com/Darkeys14/AION2-Graphics-Studio/releases/tag/v0.5.2'):
+        super().__init__(data)
+        self.url = url
+        self.headers = {'Content-Length': str(len(data))}
+
+    def geturl(self):
+        return self.url
+
+
 class UpdaterTests(unittest.TestCase):
+    def test_latest_release_uses_github_redirect_not_api(self):
+        with patch('updater.open_url', return_value=Response(b'', 'https://github.com/' + REPO + '/releases/tag/v0.5.2')) as open_mock:
+            self.assertEqual(latest_tag(), 'v0.5.2')
+            open_mock.assert_called_once_with(LATEST)
+            self.assertIn('github.com/', LATEST)
+            self.assertNotIn('api.github.com', LATEST)
+
+    def test_latest_release_rejects_unexpected_redirects(self):
+        for url in ['https://example.com/Darkeys14/AION2-Graphics-Studio/releases/tag/v0.5.2',
+                    'https://github.com/other/repo/releases/tag/v0.5.2',
+                    'https://github.com/' + REPO + '/releases/tag/v0.5.2-rc1']:
+            with patch('updater.open_url', return_value=Response(b'', url)):
+                with self.assertRaises(SafetyError):
+                    latest_tag()
+
     def test_semantic_version_comparison(self):
         self.assertGreater(version_tuple('v0.10.0'), version_tuple('0.9.9'))
         data, _ = release()
@@ -55,7 +81,7 @@ class UpdaterTests(unittest.TestCase):
         payload = b'test installer'
         data, checksum = release(payload)
         with tempfile.TemporaryDirectory() as tmp:
-            with patch('updater.open_url', side_effect=[io.BytesIO(json.dumps(data).encode()), io.BytesIO(checksum.encode()), io.BytesIO(payload)]):
+            with patch('updater.latest_tag', return_value='v0.4.0'), patch('updater.open_url', side_effect=[Response(checksum.encode()), Response(payload)]):
                 result = check_and_download(Path(tmp), '0.3.0')
             self.assertEqual(Path(result['path']).read_bytes(), payload)
             self.assertFalse(list(Path(tmp).rglob('*.part')))
@@ -64,7 +90,7 @@ class UpdaterTests(unittest.TestCase):
         payload = b'test installer'
         data, checksum = release(payload)
         with tempfile.TemporaryDirectory() as tmp:
-            with patch('updater.open_url', side_effect=[io.BytesIO(json.dumps(data).encode()), io.BytesIO(checksum.encode()), io.BytesIO(b'evil installer')]):
+            with patch('updater.latest_tag', return_value='v0.4.0'), patch('updater.open_url', side_effect=[Response(checksum.encode()), Response(b'evil installer')]):
                 with self.assertRaises(SafetyError):
                     check_and_download(Path(tmp), '0.3.0')
             self.assertFalse(list(Path(tmp).rglob('*.exe')))
